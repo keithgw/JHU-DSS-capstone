@@ -1,0 +1,179 @@
+---
+title: "Raw Corpora EDA - Predictive Text App"
+author: "Keith G. Williams"
+date: "Saturday, July 11, 2015"
+output: html_document
+---
+
+## Load Corpora
+
+```{r, message=FALSE, warning=FALSE}
+library(tm)      # for text mining
+library(ggplot2) # for plotting
+library(dplyr)   # for data manipulation
+library(stringr) # for reg exp, string replacement
+```
+
+```{r}
+ctwitter <- file.path("~", "Data Science Coursera", "capstone-JHU-swiftkey", "data", "final", "en_US", "en_US.twitter.txt")
+cblogs <- file.path("~", "Data Science Coursera", "capstone-JHU-swiftkey", "data", "final", "en_US", "en_US.blogs.txt")
+cnews <- file.path("~", "Data Science Coursera", "capstone-JHU-swiftkey", "data", "final", "en_US", "en_US.news.txt")
+
+corpus_t <- readLines(ctwitter, 
+                      encoding = "UTF-8", skipNul=TRUE)  # read the entire file
+corpus_b <- readLines(cblogs, encoding = "UTF-8", skipNul=TRUE)
+corpus_n <- readLines(file(cnews, "rb"), encoding = "UTF-8", skipNul=TRUE)
+#docs <- Corpus(DirSource(cname))
+```
+
+## Quiz questions
+
+In the en_US.twitter.txt, find the ratio of the number of lines that contain the word "love" (all lowercase) to the number of lines that contain the word "hate" (all lowercase).
+```{r}
+regex_love <- "^love | love "
+regex_hate <- "^hate | hate "
+love_lines <- str_detect(corpus_t, regex_love)
+hate_lines <- str_detect(corpus_t, regex_hate)
+
+# ratio of lines with "love" to lines with "hate"
+(lh_ratio <- sum(love_lines) / sum(hate_lines))
+```
+
+The one tweet in the en_US twitter data set containing the word "biostat" says what?
+```{r}
+corpus_t[which(str_detect(corpus_t, "biostat"))]
+```
+
+How many tweets have the exact characters "A computer once beat me at chess, but it was no match for me at kickboxing"?
+```{r}
+pattern <- "A computer once beat me at chess, but it was no match for me at kickboxing"
+sum(str_detect(corpus_t, pattern))
+```
+
+## EDA
+
+### Initial Exploration
+
+Size and structure of each corpus:
+```{r}
+files <- c(ctwitter, cblogs, cnews)
+
+# Get size of files
+file_sizes_mb <- sapply(seq(1:3), function(x) round(file.info(files[x])[[1]] / 1e6, 1))
+
+# get line counts for each corpus
+line_counts <- c(length(corpus_t), length(corpus_b), length(corpus_n))
+
+# get mean word count per line for a sample from a corpus
+mean_word_count <- function(corpus) {
+    mean(sapply(seq(1:length(corpus)), 
+               function(x) nrow(str_locate_all(corpus, "\\S+")[[x]])
+               )
+        )
+}
+
+# because files are so large, sampling will be used to find word counts
+set.seed(2718)
+nsamples <- 1000
+sample_size <- 40
+
+# find sample means
+## twitter
+meanwc_twitter <- numeric()
+for (i in 1:nsamples) {
+    meanwc_twitter <- c(meanwc_twitter, 
+                        mean_word_count(sample(corpus_t, sample_size)))
+}
+
+## blogs
+meanwc_blogs <- numeric()
+for (i in 1:nsamples) {
+    meanwc_blogs <- c(meanwc_blogs, 
+                      mean_word_count(sample(corpus_b, sample_size)))
+}
+
+## news
+meanwc_news <- numeric()
+for (i in 1:nsamples) {
+    meanwc_news <- c(meanwc_news, 
+                     mean_word_count(sample(corpus_n, sample_size)))
+}
+
+# estimate mu, sigma, and uncertainty
+## twitter
+mu_wc_twitter <- mean(meanwc_twitter)
+confint_muwc_twitter <- mu_wc_twitter + c(-1, 1) * qnorm(0.975) / sd(meanwc_twitter)
+sigma_wc_twitter <- sd(meanwc_twitter) / sqrt(sample_size)
+
+## blogs
+mu_wc_blogs <- mean(meanwc_blogs)
+confint_muwc_blogs <- mu_wc_blogs + c(-1, 1) * qnorm(0.975) / sd(meanwc_blogs)
+sigma_wc_blogs <- sd(meanwc_blogs) / sqrt(sample_size)
+
+## news
+mu_wc_news <- mean(meanwc_news)
+confint_muwc_news <- mu_wc_news + c(-1, 1) * qnorm(0.975) / sd(meanwc_news)
+sigma_wc_news <- sd(meanwc_news) / sqrt(sample_size)
+
+# estimate word counts
+wc_twitter <- round(mu_wc_twitter * line_counts[1], 0)
+wc_blogs <- round(mu_wc_blogs * line_counts[2], 0)
+wc_news <- round(mu_wc_news * line_counts[3], 0)
+
+# tabulate summary statistics for corpora
+summary_c <- data.frame(corpus = c('twitter', 'blogs', 'news'),
+                        file_size = file_sizes_mb,
+                        n_lines = line_counts,
+                        word_ct = c(wc_twitter, wc_blogs, wc_news),
+                        avg_wpl = c(mu_wc_twitter, mu_wc_blogs, mu_wc_news),
+                        sd_wpl = c(sigma_wc_twitter, 
+                                   sigma_wc_blogs, 
+                                   sigma_wc_news)
+                        )
+
+# write out summary_c data.frame for later use
+write.table(summary_c, file = "corpora_summary_stats.txt")
+```
+
+Initial questions to consider:  
+1. What are the distributions of word frequencies?  
+2. What are the frequencies of 2- and 3-grams?  
+3. How many unique words are needed in a frequency sorted dictionary to cover:  
+    a. 50% of the word instances?  
+    b. 90%?  
+4. How can one evaluate the number of words eminating from a foreign language?  
+5. Are there ways to increase coverage?
+
+Since the files are large, sampling will be used to build n-grams.  
+## Build sample corpus  
+
+
+
+## Transformations and Tokenization
+```{r}
+# custom function to replace characters with spaces
+to_space <- content_transformer(function(x, pattern) 
+    str_replace_all(x, pattern, " "))
+
+# replace /, @, | with a space
+docs <- tm_map(docs, to_space, "/|@|\\|")
+
+# make all words lowercase
+docs <- tm_map(docs, content_transformer(tolower))
+
+# remove numbers
+docs <- tm_map(docs, removeNumbers)
+
+# remove punctuation
+docs <- tm_map(docs, removePunctuation)
+
+# strip whitespace
+docs <- tm_map(docs, stripWhitespace)
+
+# View docs[1][[1]][[1]][1]
+```
+
+## Create Document Term Matrix
+```{r}
+dtm <- DocumentTermMatrix(docs)
+```
