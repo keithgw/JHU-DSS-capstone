@@ -23,7 +23,6 @@ corpus_t <- readLines(ctwitter,
                       encoding = "UTF-8", skipNul=TRUE)  # read the entire file
 corpus_b <- readLines(cblogs, encoding = "UTF-8", skipNul=TRUE)
 corpus_n <- readLines(file(cnews, "rb"), encoding = "UTF-8", skipNul=TRUE)
-#docs <- Corpus(DirSource(cname))
 ```
 
 ## Quiz questions
@@ -132,7 +131,7 @@ summary_c <- data.frame(corpus = c('twitter', 'blogs', 'news'),
                         )
 
 # write out summary_c data.frame for later use
-write.table(summary_c, file = "corpora_summary_stats.txt")
+# write.table(summary_c, file = "corpora_summary_stats.txt")
 ```
 
 Initial questions to consider:  
@@ -147,33 +146,104 @@ Initial questions to consider:
 Since the files are large, sampling will be used to build n-grams.  
 ## Build sample corpus  
 
+```{r}
+# create a logical mask for each corpus of size 1%
+corpus_sample <- function(corpus, p) {
+    mask <- rbinom(length(corpus), size=1, prob=p)
+    mask <- mask == 1
+    return(corpus[mask])
+}
 
+sample_twitter <- corpus_sample(corpus_t, p=0.01)
+sample_blog <- corpus_sample(corpus_b, p=0.01)
+sample_news <- corpus_sample(corpus_n, p=0.01)
+
+# aggregate samples into a single corpus
+scfile <- file.path("~", "Data Science Coursera", "capstone-JHU-swiftkey", "JHU-DSS-capstone", "data", "sample_corpus.txt")
+# lapply(list(sample_twitter, sample_blog, sample_news), 
+#        function(x){write(x, file=scfile, append=TRUE)})
+```
 
 ## Transformations and Tokenization
 ```{r}
+scorp <- Corpus(DirSource(file.path("~", "Data Science Coursera", "capstone-JHU-swiftkey", "JHU-DSS-capstone", "data")))
+
 # custom function to replace characters with spaces
 to_space <- content_transformer(function(x, pattern) 
     str_replace_all(x, pattern, " "))
 
-# replace /, @, | with a space
-docs <- tm_map(docs, to_space, "/|@|\\|")
+# replace /, @, |, -,  with a space
+scorp <- tm_map(scorp, to_space, "/|@|\\||-")
+
+# custom function to remove hashtags
+rmv_hashtags <- content_transformer(function(x) 
+    str_replace_all(x, "#.* |#.*$",""))
+scorp <- tm_map(scorp, rmv_hashtags)
 
 # make all words lowercase
-docs <- tm_map(docs, content_transformer(tolower))
+scorp <- tm_map(scorp, content_transformer(tolower))
 
 # remove numbers
-docs <- tm_map(docs, removeNumbers)
+scorp <- tm_map(scorp, removeNumbers)
 
 # remove punctuation
-docs <- tm_map(docs, removePunctuation)
+scorp <- tm_map(scorp, removePunctuation)
+
+# remove anything left that isn't letters
+scorp <- tm_map(scorp, to_space, "[^A-Za-z]")
 
 # strip whitespace
-docs <- tm_map(docs, stripWhitespace)
+scorp <- tm_map(scorp, stripWhitespace)
 
-# View docs[1][[1]][[1]][1]
+# View: scorp[1][[1]][[1]][line#]
 ```
 
 ## Create Document Term Matrix
+
 ```{r}
-dtm <- DocumentTermMatrix(docs)
+dtm <- DocumentTermMatrix(scorp)
+```
+
+Create a word frequency list from the sampled and cleaned corpus.  
+
+```{r}
+freq <- colSums(as.matrix(dtm))
+ord <- order(freq, decreasing=TRUE)
+```  
+
+Visualize word frequencies. Specifically answer:  
+1. What is the shape of the distribution of word frequencies?  
+2. What top n-frequent words are needed to cover:  
+    a. 50% of unique words?  
+    b. 90% of unique words?  
+    
+```{r}
+# create a plot of frequency of word-frequencies
+word_freq_dist <- as.data.frame(table(freq)) %>% 
+    rename(word_frequency = freq, frequency = Freq) %>%
+    mutate(normed_frequency = frequency / sum(frequency),
+           log_word_freq = log(as.numeric(word_frequency)),
+           log_normed = log(normed_frequency))
+
+# clean up, add trend line. Follows power-law
+ggplot(data=word_freq_dist, aes(log_word_freq, log_normed)) + 
+    geom_point(size=4, alpha=0.2)
+```
+
+Find n-frequent word cut-offs.  
+
+```{r}
+unique_words <- sum(word_freq_dist$frequency)
+nfreq <- dim(word_freq_dist)[1]
+pct_remaining <- numeric()
+for (i in 1:nfreq - 1){
+    j <- i + 1
+    pct_remaining <- c(pct_remaining, 
+                       sum(word_freq_dist[j:nfreq, 2]) / unique_words)
+}
+nfreq_removed <- data.frame(nfreq = as.numeric(word_freq_dist$word_frequency),
+                            pct_remaining = pct_remaining)
+
+# plot
+ggplot(data=nfreq_removed, aes(nfreq, pct_remaining)) + geom_line()
 ```
