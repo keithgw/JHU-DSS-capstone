@@ -147,16 +147,16 @@ Since the files are large, sampling will be used to build n-grams.
 ## Build sample corpus  
 
 ```{r}
-# create a logical mask for each corpus of size 1%
+# create a logical mask for each corpus of size 5%
 corpus_sample <- function(corpus, p) {
     mask <- rbinom(length(corpus), size=1, prob=p)
     mask <- mask == 1
     return(corpus[mask])
 }
 
-sample_twitter <- corpus_sample(corpus_t, p=0.01)
-sample_blog <- corpus_sample(corpus_b, p=0.01)
-sample_news <- corpus_sample(corpus_n, p=0.01)
+sample_twitter <- corpus_sample(corpus_t, p=0.05)
+sample_blog <- corpus_sample(corpus_b, p=0.05)
+sample_news <- corpus_sample(corpus_n, p=0.05)
 
 # aggregate samples into a single corpus
 scfile <- file.path("~", "Data Science Coursera", "capstone-JHU-swiftkey", "JHU-DSS-capstone", "data", "sample_corpus.txt")
@@ -202,6 +202,8 @@ scorp <- tm_map(scorp, stripWhitespace)
 
 ```{r}
 dtm <- DocumentTermMatrix(scorp)
+
+# save to file when satisfied
 ```
 
 Create a word frequency list from the sampled and cleaned corpus.  
@@ -244,6 +246,33 @@ for (i in 1:nfreq - 1){
 nfreq_removed <- data.frame(nfreq = as.numeric(word_freq_dist$word_frequency),
                             pct_remaining = pct_remaining)
 
-# plot
+# plot 
 ggplot(data=nfreq_removed, aes(nfreq, pct_remaining)) + geom_line()
+```  
+
+Eliminating the words that appear only once narrows down the unique word library to 48%. However, many of the unique words are urls and foreign words.  Perform the same analysis after eliminating unique words.
+
+```{r}
+atleast_twice <- freq[freq > 1]
+word_freq_dist2 <- as.data.frame(table(atleast_twice)) %>% 
+    rename(word_frequency = atleast_twice, frequency = Freq) %>%
+    mutate(normed_frequency = frequency / sum(frequency),
+           log_word_freq = log(as.numeric(word_frequency)),
+           log_normed = log(normed_frequency))
+
+unique_words2 <- sum(word_freq_dist2$frequency)
+nfreq2 <- dim(word_freq_dist2)[1]
+pct_remaining2 <- numeric()
+for (i in 1:nfreq2 - 1){
+    j <- i + 1
+    pct_remaining2 <- c(pct_remaining2, 
+                       sum(word_freq_dist2[j:nfreq2, 2]) / unique_words2)
+}
+nfreq_removed2 <- data.frame(nfreq = as.numeric(as.character(word_freq_dist2$word_frequency)), pct_remaining = pct_remaining2)
+
+ggplot(data=nfreq_removed2, aes(nfreq, pct_remaining)) + geom_line()
 ```
+
+While the shape of the curve is the same, treating the 1-frequent words as nonwords leads to a different conclusion. Now, removing up to 5-frequent words still leaves more than half of all words in place.
+
+## n-grams
