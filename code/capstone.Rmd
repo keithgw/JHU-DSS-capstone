@@ -213,6 +213,13 @@ Create a word frequency list from the sampled and cleaned corpus.
 ```{r}
 freq <- colSums(as.matrix(dtm))
 ord <- order(freq, decreasing=TRUE)
+
+# plot 30 most frequent words
+uni30 <- data.frame(word=names(freq[ord][1:30]), frequency=freq[ord][1:30]) %>% mutate(prop=frequency / sum(freq))
+
+uniplot <- ggplot(uni30, aes(reorder(word, frequency), prop * 100))
+uniplot <- uniplot + geom_bar(stat='identity')
+uniplot <- uniplot + coord_flip()
 ```  
 
 Visualize word frequencies. Specifically answer:  
@@ -296,9 +303,30 @@ ngram <- function(n) {
 
 # build bigrams
 bigrams <- ngram(2)
+saveRDS(bigrams, "bigrams.rds")
 
 # build trigrams
 trigrams <- ngram(3)
+saveRDS(trigrams, "trigrams.rds")
 ```
 
 ## Visualize most frequent uni-, bi-, and trigrams
+
+```{r}
+top30plot <- function(dtm) {
+    freq <- colSums(as.matrix(dtm))
+    ord <- order(freq, decreasing=TRUE)
+
+    # plot 30 most frequent words
+    df <- data.frame(word=names(freq[ord][1:30]), frequency=freq[ord][1:30])
+    df <- mutate(df, prop=frequency / sum(freq))
+
+    g <- ggplot(df, aes(reorder(word, frequency), prop * 100))
+    g <- g + geom_bar(stat='identity')
+    g <- g + coord_flip()
+    return(g)
+}
+
+top30plot(bigrams)
+top30plot(trigrams)
+```
