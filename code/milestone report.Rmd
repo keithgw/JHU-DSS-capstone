@@ -1,0 +1,156 @@
+---
+title: "Milestone Report JHU-DSS Capstone"
+author: "Keith G. Williams"
+date: "Thursday, July 23, 2015"
+output: html_document
+---
+
+## Executive Summary
+
+The goal of this project is to build a predictive text language model as a Shiny application. This report serves as a milestone to share the preliminary, exploratory findings of the data used to build the predictive model, and to outline future plans for the predictive model.
+
+In particular, this report shares:  
+1. summary statistics of the data set used to create the predictive model.  
+2. frequency statitistics of n-grams to be used in the model.  
+3. next steps  
+
+## Corpora  
+
+In Natural Language Processing, a data set is called a 'corpus'. The corpus for this project was generously donated under fair use, and can be found here: [HC Corpora](http://www.corpora.heliohost.org/aboutcorpus.html).  
+
+The US english corpus consists of three separate corpora, one from twitter, one from internet blogs, and one from news. The table below summarizes the size and structure of each corpus.
+
+```{r, echo=FALSE, message=FALSE}
+library(knitr)
+library(dplyr)
+sumstats <- read.table("corpora_summary_stats.txt")
+sumstats <- mutate(sumstats, n_lines = round(n_lines/1e6, 2),
+                   word_ct = round(word_ct/1e6, 2), 
+                   avg_wpl = round(avg_wpl, 2),
+                   sd_wpl = round(sd_wpl, 2))
+
+column_names <- c('Corpus', 
+                  'File Size (Mb)', 
+                  'Number of Lines (millions)', 
+                  'Word Count (millions)', 
+                  'Average Words per Line',
+                  'Std Dev Words per Line')
+kable(sumstats, col.names=column_names)
+```
+
+One can see that the corpora vary in structure, though each have roughly the same number of words (30 - 38 million). Further, the files are quite large. Such large files will be cumbersome for building a predictive model, so sampling will be leveraged to make analysis and prediction more efficient.  
+
+## Sample Corpus
+
+One percent of each of the three corpora were sampled and aggregated to make a more memory efficient corpus. The sample corpus was then cleaned to:  
+1. remove hashtags and urls  
+2. remove numbers  
+3. remove punctuation  
+4. remove capitalizations  
+5. strip white space  
+
+From the log-log plot of the frequency of word frequencies below, one can see that word frequencies follow a [power law distribution](https://en.wikipedia.org/wiki/Power_law) in which the second-most frequent word appears about half as often as the most frequent word.
+
+```{r, echo=FALSE, message=FALSE}
+library(tm)
+library(ggplot2)
+
+# load uni-, bi-, trigram document term matrices
+dtm <- readRDS("dtm.rds") # unigrams
+bigrams <- readRDS("bigrams.rds")
+trigrams <- readRDS("trigrams.rds")
+
+# create ordered, named unigram frequencies
+freq <- colSums(as.matrix(dtm))
+ord <- order(freq, decreasing=TRUE)
+
+# create data.frame for plotting
+word_freq_dist <- as.data.frame(table(freq)) %>% 
+    rename(word_frequency = freq, frequency = Freq) %>%
+    mutate(normed_frequency = frequency / sum(frequency),
+           log_word_freq = log(as.numeric(word_frequency)),
+           log_normed = log(normed_frequency))
+
+# plot
+ff <- ggplot(data=word_freq_dist, aes(log_word_freq, log_normed)) 
+ff <- ff + geom_point(size=4, alpha=0.2, color='steelblue')
+ff <- ff + geom_smooth(method="lm", se=FALSE, color = 'brown4')
+ff <- ff + labs(title = "Frequencies of Word Frequencies", 
+                 x = "log(word frequencies)",
+                 y = "log(frequency)")
+ff
+```
+
+This observation will be leveraged to increase the efficiency of model without sacrificing much coverage. After removing words that appear only once (these are likely to be mispellings or nonsense words), one can see how vocabulary coverage is affected by dropping the first 1-7 frequent terms.  
+
+```{r, echo=FALSE}
+atleast_twice <- freq[freq > 1]
+word_freq_dist2 <- as.data.frame(table(atleast_twice)) %>% 
+    rename(word_frequency = atleast_twice, frequency = Freq) %>%
+    mutate(normed_frequency = frequency / sum(frequency),
+           log_word_freq = log(as.numeric(word_frequency)),
+           log_normed = log(normed_frequency))
+
+unique_words2 <- sum(word_freq_dist2$frequency)
+nfreq2 <- dim(word_freq_dist2)[1]
+pct_remaining2 <- numeric()
+for (i in 1:nfreq2 - 1){
+    j <- i + 1
+    pct_remaining2 <- c(pct_remaining2, 
+                       sum(word_freq_dist2[j:nfreq2, 2]) / unique_words2)
+}
+nfreq_removed2 <- data.frame(nfreq = as.numeric(as.character(word_freq_dist2$word_frequency)), pct_remaining = pct_remaining2)
+
+g <- ggplot(data=nfreq_removed2[1:7,], aes(nfreq - 1, pct_remaining))
+g <- g + geom_line()
+g <- g + labs(title = "Vocabulary Remaining after n-frequent words removed",
+              x = "n-frequent words",
+              y = "proportion of vocabulary remaining")
+g
+```
+
+From this, it can be concluded that dropping all 1- and 2-frequent words will leave 75% of the original vocabulary, while dropping all 1-4-frequent words will leave 50% of the original vocabulary in the corpus. Later, cross-validation can be used to choose this parameter to weigh prediction accuracy against speed.
+
+## n-grams
+
+n-grams are chains of n-word tokens. They can be used to build a language model, since the probability of a word following a small $n$ n-gram closely approximates the probability of a word following a large $n$ n-gram. Here, the top 30 uni-, bi-, and trigrams are shown along with their frequencies (as percentages).  
+
+```{r, echo=FALSE}
+top30plot <- function(dtm) {
+    freq <- colSums(as.matrix(dtm))
+    ord <- order(freq, decreasing=TRUE)
+
+    # plot 30 most frequent words
+    df <- data.frame(word=names(freq[ord][1:30]), frequency=freq[ord][1:30])
+    df <- mutate(df, prop=frequency / sum(freq))
+
+    g <- ggplot(df, aes(reorder(word, frequency), prop * 100))
+    g <- g + geom_bar(stat='identity', fill = 'steelblue')
+    g <- g + coord_flip()
+    return(g)
+}
+
+# plot top 30 unigrams
+n1 <- top30plot(dtm)
+n1 + labs(title = "Top 30 Unigrams",
+          x = "Unigram",
+          y = "Percent of Total Unigrams")
+
+# plot top 30 bigrams
+n2 <- top30plot(bigrams)
+n2 + labs(title = "Top 30 Bigrams",
+          x = "Bigram",
+          y = "Percent of Total Bigrams")
+
+# plot top 30 trigrams
+n3 <- top30plot(trigrams)
+n3 + labs(title = "Top 30 Trigrams",
+          x = "Trigram",
+          y = "Percent of Total Trigrams")
+```
+
+One can see that the most frequent 1-3-grams include many english stop words.
+
+## Next Steps
+
+The next task will be to build a basic n-gram language model, using Markov chains to approximate the probability of a word given the preceding $n$ words, and deploy it in Shiny. Once this rough skeleton has been deployed, I plan to implement different smoothing ideas to increase the accuracy of the model, and use cross-validation against a test set to evaluate different models.

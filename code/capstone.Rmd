@@ -12,7 +12,10 @@ library(tm)      # for text mining
 library(ggplot2) # for plotting
 library(dplyr)   # for data manipulation
 library(stringr) # for reg exp, string replacement
+library(stringi)
 library(RWeka)   # for NLP, n-gram tokenizer
+library(slam)    # for calcualtions on simple triplet matrices (outputs of tm)
+library(data.table) # fast search
 ```
 
 ```{r}
@@ -148,21 +151,28 @@ Since the files are large, sampling will be used to build n-grams.
 ## Build sample corpus  
 
 ```{r}
-# create a logical mask for each corpus of size 1%
+# create a logical mask for each corpus of size 4%
 corpus_sample <- function(corpus, p) {
     mask <- rbinom(length(corpus), size=1, prob=p)
     mask <- mask == 1
     return(corpus[mask])
 }
 
-sample_twitter <- corpus_sample(corpus_t, p=0.01)
-sample_blog <- corpus_sample(corpus_b, p=0.01)
-sample_news <- corpus_sample(corpus_n, p=0.01)
+sample_twitter <- corpus_sample(corpus_t, p=0.04)
+sample_blog <- corpus_sample(corpus_b, p=0.04)
+sample_news <- corpus_sample(corpus_n, p=0.04)
 
 # aggregate samples into a single corpus
-scfile <- file.path("~", "Data Science Coursera", "capstone-JHU-swiftkey", "JHU-DSS-capstone", "data", "sample_corpus.txt")
+scfile <- file.path("~", "Data Science Coursera", "capstone-JHU-swiftkey", "JHU-DSS-capstone", "data", "sample_corpus_04.txt")
 lapply(list(sample_twitter, sample_blog, sample_news), 
        function(x){write(x, file=scfile, append=TRUE)})
+
+# clean up memory
+rm(cblogs, cnews, ctwitter, 
+   corpus_b, corpus_n, corpus_t, 
+   sample_blog, sample_news, sample_twitter, 
+   scfile, corpus_sample)
+
 ```
 
 ## Transformations and Tokenization
@@ -196,13 +206,16 @@ scorp <- tm_map(scorp, to_space, "[^A-Za-z]")
 # strip whitespace
 scorp <- tm_map(scorp, stripWhitespace)
 
+# convert to plain text
+scorp <- tm_map(scorp, PlainTextDocument)
+
 # View: scorp[1][[1]][[1]][line#]
 ```
 
 ## Create Document Term Matrix
 
 ```{r}
-dtm <- DocumentTermMatrix(scorp)
+dtm <- DocumentTermMatrix(scorp, control=list(wordLengths=c(0,Inf)))
 
 # save to file when satisfied
 saveRDS(dtm, "dtm.rds")
@@ -289,24 +302,25 @@ n-grams are chains of n-word tokens. They can be used to build a language model,
 
 ```{r}
 # custom function for building n-grams
-ngram <- function(n) {
+count_ngrams <- function(n) {
     options(mc.cores = 2)
     ctrl <- Weka_control(min = n, max = n)
     ngram_tokenizer <- function(x) NGramTokenizer(x, control = ctrl)
     dtm_ngram <- DocumentTermMatrix(scorp, 
                                     control = list(tokenize = ngram_tokenizer))
-     <- as.data.frame(apply(my_function_tdm,1,sum))
-    colnames(my_function_tdm) <- c("Qty")
-    return(my_function_tdm)
     return(dtm_ngram)
 }
 
+# build unigrams
+unigrams <- count_ngrams(1)
+saveRDS(unigrams, "unigrams.rds")
+
 # build bigrams
-bigrams <- ngram(2)
+bigrams <- count_ngrams(2)
 saveRDS(bigrams, "bigrams.rds")
 
 # build trigrams
-trigrams <- ngram(3)
+trigrams <- count_ngrams(3)
 saveRDS(trigrams, "trigrams.rds")
 ```
 
@@ -329,4 +343,60 @@ top30plot <- function(dtm) {
 
 top30plot(bigrams)
 top30plot(trigrams)
+```
+
+## Frequency Tables
+
+NEED TO FIX: unigrams do not contain 1- or 2- letter words.
+
+For prediction, a sorted frequency n-gram table is needed.
+Format:
+
+columnns: word_i  
+rows: ngram word_{i - 1}  
+entries: log probability of count.word_i / count.ngram word_{i - 1}
+
+```{r}
+unigrams <- readRDS('unigrams.rds')
+bigrams <- readRDS('bigrams.rds')
+trigrams <- readRDS('trigrams.rds')
+
+freq_sorted <- function(ngram) {
+    return(sort(col_sums(ngram), decreasing=TRUE))
+}
+
+unisorted <- freq_sorted(unigrams)
+bisorted <- freq_sorted(bigrams)
+trisorted <- freq_sorted(trigrams)
+
+# example regex for subsetting bigrams by second word:
+# second_word_of <- "(.* of$)"  # does "of$" work?
+# result <- bisorted[str_detect(names(bisorted), second_word_of)]
+
+unidat <- data.table(ngram = names(unisorted), frequency = unisorted)
+bidat <- data.table(ngram = names(bisorted), frequency = bisorted)
+tridat <- data.table(ngram = names(trisorted), frequency = trisorted)
+
+# example data.table:
+#    ngram  frequency  minus_i  last
+# rock and         42    rock   and
+####################################
+#        ngram  frequency   minus_i  last
+#rock and roll         18  rock and  roll
+
+# Function to extract the ith word given the i-1 ngram
+# If input ngram not found, returns NA (fix later)
+extracti <- function(ngram, n) {
+    pattern <- str_c("^", stri_trans_tolower(ngram))
+    
+    if (n == 2) {dat <- bidat}
+    else if (n == 3) {dat <- tridat}
+    else {dat <- tetradat}
+    
+    return(str_split(dplyr::filter(dat, 
+                            str_detect(dat$ngram, pattern)
+                            )$ngram[1], 
+                     " ")[[1]][n]
+           )   
+}
 ```
