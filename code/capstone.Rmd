@@ -377,6 +377,13 @@ unidat <- data.table(ngram = names(unisorted), frequency = unisorted)
 bidat <- data.table(ngram = names(bisorted), frequency = bisorted)
 tridat <- data.table(ngram = names(trisorted), frequency = trisorted)
 
+# Save data.tables for shiny
+saveRDS(unidat, "unidat.rds")
+saveRDS(bidat, "bidat.rds")
+saveRDS(tridat, "tridat.rds")
+```
+
+```{r}
 # example data.table:
 #    ngram  frequency  minus_i  last
 # rock and         42    rock   and
