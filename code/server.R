@@ -1,38 +1,53 @@
-### To Do:
-# Back-off model
-# Smoothing Model <unk>
-# Tetragrams
-
-
 # load libraries
 library(stringr)
 library(stringi)
 library(dplyr)
 
 # load n-gram data.tables
-# unigrams <- readRDS('unidat.rds')
 bigrams <- readRDS('bidat.rds')
 trigrams <- readRDS('tridat.rds')
 
 extracti <- function(ngram, n) {
-    pattern <- str_c("^", stri_trans_tolower(ngram))
+    stem <- stri_trans_tolower(ngram)
     
-    if (n == 2) {dat <- bidat}
-    else if (n == 3) {dat <- tridat}
-    else {dat <- tetradat}
-    
-    return(str_split(dplyr::filter(dat, 
-                                   str_detect(dat$ngram, pattern)
-    )$ngram[1], 
-    " ")[[1]][n]
-    )   
+    # bigram model
+    if (n == 2) {
+        i <- match(stem, bigrams$first)  # index of most frequent match
+        if (is.na(i)){
+            i <- match('<unk>', bigrams$first)  # unseen token
+        }
+        return(bigrams[i, 'last'])
+    }
+    # trigram model
+    else{
+        i <- match(stem, trigrams$first)
+        if (is.na(i)){
+            # try 'word1 <unk>'
+            j <- match(str_replace(stem, ' *.$', ' <unk>'), trigrams$first)
+            if (!is.na(j)){
+                i <- j
+            }
+            # try '<unk> word2'
+            else{
+                j <- match(str_replace(stem, '^*. ', '<unk> '), trigrams$first)
+                if (!is.na(j)){
+                    i <- j
+                }
+                # try '<unk> <unk>'
+                else{
+                    i <- match('<unk> <unk>', trigrams$first)
+                }
+            }
+        }
+        return(trigrams[i, 'last'])
+    }
 }
 
 # Shiny Server
 shinyServer(
     function(input, output) {
         
-        # create prediction object with interval from inputs
+        # create prediction object from input text
         predicted_word <- reactive({
             # strip white space, remove punctuation, and tokenize input
             trimmed <- str_trim(input$input_txt) %>% 

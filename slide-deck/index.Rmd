@@ -1,0 +1,74 @@
+---
+title       : Fuel Economy Prediction
+subtitle    : A Shiny App
+author      : Keith G. Williams
+job         : JHU Data Science Specialization on Coursera - Developing Data Products
+framework   : io2012        # {io2012, html5slides, shower, dzslides, ...}
+highlighter : highlight.js  # {highlight.js, prettify, highlight}
+hitheme     : tomorrow      # 
+widgets     : [mathjax] # {mathjax, quiz, bootstrap}
+mode        : selfcontained # {standalone, draft}
+knit        : slidify::knit2slides
+---
+
+## The Problem
+
+- As demand increases for fuel efficient cars, automobile designers need to know how to meet this demand without sacrificing other features, such as performance, luxury, cargo space, etc.
+
+- Therefore, one needs to know what factors contribute to fuel efficiency, and quantify their impact.
+
+--- 
+
+## The Model
+
+- A linear model was built to make the predictions, which identifies weight, horspower, number of cylinders, and transmission type as the most important factors in determining fuel economy.
+
+$$MPG_i = \beta_0 + \beta_1 transmission_i + \beta_2 weight_i + \beta_3 cylinders_i + \beta_4 horsepower_i + e_i$$
+
+- Coefficients (betas)
+
+```{r echo=FALSE}
+data(mtcars)
+
+# change transmission and cyl variables to factors and relabel
+mtcars$am <- factor(mtcars$am)
+mtcars$cyl <- factor(mtcars$cyl)
+levels(mtcars$am) <- c('automatic', 'manual')
+
+# fit a linear model to predict mpg
+fit <- lm(mpg ~ am + wt + cyl + hp, data=mtcars)
+
+fit$coefficients
+```
+
+- R-squared
+
+```{r echo=FALSE}
+summary(fit)$r.squared
+```
+
+---
+
+## Why Use This App?
+
+- This model is cumbersome for a designer to use when comparing possible design parameters for a new car.
+
+- MPG prediction calcluation for an automatic, 3,325 lb. car, with 4 cylinders, and 123 hp
+$$\hat{MPG} = \beta_0 + \beta_1 (0) + \beta_2 (3.325) + \beta_3 (0) + \beta_4 (0) + \beta_5 (123)$$
+```{r}
+mpg_hat <- fit$coeff[1] + fit$coeff[2] * 0 + fit$coeff[3] * 3.325 + fit$coeff[4] * 0 + fit$coeff[5] * 0 + fit$coeff[6] * 123
+mpg_hat
+```
+
+- Rather, it would be nice if these predictions could be made quickly with an intuitive graphical user interface and a measure of uncertainty.
+
+- The Shiny App does just this.
+
+---
+
+## Try It Out
+
+![ShinyApp](hello-shiny.png "Inputs on Left, Prediction on Right")
+[https://keithgw.shinyapps.io/Hello-Shiny/](https://keithgw.shinyapps.io/Hello-Shiny/)
+
+

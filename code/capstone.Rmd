@@ -347,15 +347,6 @@ top30plot(trigrams)
 
 ## Frequency Tables
 
-NEED TO FIX: unigrams do not contain 1- or 2- letter words.
-
-For prediction, a sorted frequency n-gram table is needed.
-Format:
-
-columnns: word_i  
-rows: ngram word_{i - 1}  
-entries: log probability of count.word_i / count.ngram word_{i - 1}
-
 ```{r}
 unigrams <- readRDS('unigrams.rds')
 bigrams <- readRDS('bigrams.rds')
