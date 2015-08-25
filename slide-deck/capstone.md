@@ -22,13 +22,13 @@ Robustness
 
 Using the App
 ========================================================
-# Insert a picture of the app window
+![ShinyApp](shinyapp.png "Inputs on Left, Prediction on Right")
 - To use the app, input any number of words into the input box.
 - Click 'predict' to see the prediction of the next word.
 - The predicted word will be output to the right.
 
 Try it Out
 ========================================================
-# Link to the app
+[Try it out!](https://keithgw.shinyapps.io/application)
 - For a production model implementation, predictions should pop up instantaneously as the user inputs letters.
 - Accuracy would be greatly improved by training on a larger data set. This model is limited by memory, so distributed computing would be needed to improve prediction accuracy.

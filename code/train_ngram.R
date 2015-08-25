@@ -147,9 +147,9 @@ max_bigrams <- lapply(seq(1, length(unique_bifirsts)),
 
 prediction_bigrams <- rbindlist(max_bigrams)
 # prediction_trigrams <- rbindlist(max_trigrams, use.names=fill, fill=FALSE)
-saveRDS(prediction_bigrams, "prediction_bigrams.rds")
+saveRDS(prediction_bigrams, "prediction_bigrams.rda")
 
 # change later
 prediction_trigrams <- tridat
-saveRDS(prediction_trigrams, "prediction_trigrams.rds")
+saveRDS(prediction_trigrams, "prediction_trigrams.rda")
 
